@@ -14,11 +14,7 @@ impl World {
     pub fn new(width: usize, height: usize) -> World {
         let count = width * height;
         let poses = World::poses();
-        let mut cells = Vec::with_capacity(count);
-
-        for _ in 0..count {
-            cells.push(Cell::new());
-        }
+        let cells = vec![Cell::new(); count];
 
         World { width, height, cells, poses }
     }

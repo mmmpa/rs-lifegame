@@ -13,4 +13,3 @@ fn main() {
     let w = World::new(10, 10);
     println!("{:?}", w.cells);
 }
-
