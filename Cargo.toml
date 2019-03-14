@@ -6,3 +6,5 @@ edition = "2018"
 
 [dependencies]
 regex = "0.2.2"
+gif = "0.10.1"
+num_cpus = "1.10.0"

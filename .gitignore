@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 fixtures/*
+!fixtures/.keep
+tmp/*
+!tmp/.keep
