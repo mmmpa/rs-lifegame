@@ -4,7 +4,6 @@ use std::str::FromStr;
 use std::io::Write;
 use std::{thread, time};
 
-mod cell;
 mod world;
 mod rle;
 mod game;
@@ -22,7 +21,7 @@ fn main() {
     let mode = (&args[0]).as_str();
 
     match mode {
-        "gif" | "gif_p" if args.len() <= 6 => (),
+        "gif" | "gif_p" | "gif_pp" if args.len() <= 6 => (),
         "term" if args.len() <= 4 => (),
         _ => write_usage_and_exit()
     }
@@ -36,7 +35,11 @@ fn main() {
     if is_gif {
         let turns = usize::from_str(&args[4]).expect("invalid TURNS");
         let output = &args[5];
-        animation_gif(game, delay, turns, output, mode);
+        if mode == "gif_pp" {
+            animation_gif_p(game, delay, turns, output);
+        } else {
+            animation_gif(game, delay, turns, output, mode);
+        }
     } else {
         terminal(game, delay);
     }
@@ -52,6 +55,34 @@ use gif::{Frame, Encoder, Repeat, SetParameter};
 use std::fs::File;
 use std::borrow::Cow;
 use std::mem;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, RwLock};
+
+fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
+    let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
+    let (width, height) = (game.width as u16, game.height as u16);
+
+    let mut image = File::create(output).unwrap();
+    let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
+    encoder.set(Repeat::Infinite).unwrap();
+
+    let (trigger_sender, trigger_receiver) = channel();
+    let (game_wrapper, result_receiver) = game.step_farm(trigger_receiver);
+
+    for turn in 0..turns {
+        let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game_wrapper.read().unwrap().lives()) };
+
+        let mut frame = Frame::default();
+        frame.delay = delay;
+        frame.width = width;
+        frame.height = height;
+        frame.buffer = Cow::Borrowed(&*state);
+        encoder.write_frame(&frame).unwrap();
+
+        trigger_sender.send(()).unwrap();
+        result_receiver.recv().unwrap();
+    }
+}
 
 fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String, mode: &str) {
     let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];

@@ -4,6 +4,7 @@ use crate::world::World;
 use std::mem::swap;
 use std::thread::spawn;
 use std::sync::{Arc, RwLock};
+use std::sync::mpsc::{Receiver, channel};
 
 pub struct Game {
     pub width: isize,
@@ -23,7 +24,7 @@ impl Game {
 
         for (y, cols) in lives.chunks(width).enumerate() {
             for (x, doa) in cols.iter().enumerate() {
-                world_a.set_live(x as isize, y as isize, *doa);
+                world_a.set_life(x as isize, y as isize, *doa);
             }
         }
 
@@ -37,7 +38,83 @@ impl Game {
         }
     }
 
-    pub fn step_p<'a>(&mut self) {
+    pub fn step_farm(self, trigger_receiver: Receiver<()>) -> (Arc<RwLock<Game>>, Receiver<()>) {
+        let workers = self.cpu_num;
+        let width = self.width as usize;
+        let height = self.height as usize;
+        let cpu_rows = self.cpu_rows;
+        let cap = self.cpu_rows * width;
+
+        let self_wrapper = Arc::new(RwLock::new(self));
+        let (result_sender, result_receiver) = channel();
+        let (turn_end_sender, turn_end_receiver) = channel();
+
+
+        let mut world_senders = vec![];
+
+        for i in 0..workers {
+            let head = i * cpu_rows;
+            let y_range = head..(head + cpu_rows);
+            let sender = result_sender.clone();
+
+            let (world_sender, world_receiver) = channel::<Arc<RwLock<World>>>();
+            world_senders.push(world_sender);
+
+            spawn(move || {
+                while let Ok(world_a_arc) = world_receiver.recv() {
+                    let world_a = world_a_arc.read().unwrap();
+                    let mut lives = Vec::with_capacity(cap);
+                    let mut rows = 0;
+                    for y in y_range.clone() {
+                        if y >= height {
+                            break;
+                        }
+                        rows += 1;
+                        for x in 0..width {
+                            lives.push(next_live(&world_a, x as isize, y as isize));
+                        }
+                    }
+                    sender.send((head, rows, lives)).unwrap();
+                }
+            });
+        }
+
+        let game_writer = self_wrapper.clone();
+        spawn(move || {
+            let mut worked = 0;
+
+            while let Ok((head, rows, lives)) = result_receiver.recv() {
+                let mut game = game_writer.write().unwrap();
+                {
+                    let mut world_b = game.world_b.write().unwrap();
+                    if rows != 0 {
+                        world_b.set_lives(0, head, lives);
+                    }
+                }
+
+                if worked >= workers - 1 {
+                    worked = 0;
+                    game.swap();
+                    turn_end_sender.send(()).unwrap();
+                } else {
+                    worked += 1;
+                }
+            }
+        });
+
+        let game_reader = self_wrapper.clone();
+        spawn(move || {
+            while let Ok(()) = trigger_receiver.recv() {
+                for world_sender in &world_senders {
+                    world_sender.send(game_reader.read().unwrap().world_a.clone()).unwrap();
+                }
+            }
+        });
+
+        (self_wrapper, turn_end_receiver)
+    }
+
+    pub fn step_p(&mut self) {
         let mut workers = Vec::with_capacity(self.cpu_num);
 
         for i in 0..self.cpu_num {
@@ -62,7 +139,7 @@ impl Game {
                         lives.push(next_live(world_a, x as isize, y as isize));
                     }
                 }
-                (head as isize, rows, lives)
+                (head, rows, lives)
             }));
         }
 
@@ -74,11 +151,7 @@ impl Game {
                     continue;
                 }
 
-                for y in 0..rows {
-                    for x in 0..self.width {
-                        world_b.set_live(x, head + y, lives[(y * self.width + x) as usize]);
-                    }
-                }
+                world_b.set_lives(0, head, lives);
             }
         }
 
@@ -92,7 +165,7 @@ impl Game {
 
             for y in 0..self.height {
                 for x in 0..self.width {
-                    world_b.set_live(x, y, next_live(&world_a, x, y));
+                    world_b.set_life(x, y, next_live(&world_a, x, y));
                 }
             }
         }
@@ -102,7 +175,7 @@ impl Game {
 
     pub fn lives(&self) -> Vec<bool> {
         let world_a = self.world_a.read().unwrap();
-        world_a.cells.iter().map(|cell| cell.live).collect()
+        world_a.cells.clone()
     }
 
     fn swap(&mut self) {
@@ -191,6 +264,35 @@ fn test_step_p() {
     g.step_p();
 
     assert_eq!(g.lives(), vec![
+        false, false, false,
+        true, true, true,
+        false, false, false,
+    ]);
+}
+
+#[test]
+fn test_step_farm() {
+    let blinker = vec![
+        false, false, false,
+        true, true, true,
+        false, false, false,
+    ];
+    let g = Game::new(3, 3, &blinker);
+    let (trigger, receiver) = channel();
+
+    let (game_wrapper, r) = g.step_farm(receiver);
+
+    trigger.send(()).unwrap();
+    r.recv().unwrap();
+    assert_eq!(game_wrapper.read().unwrap().lives(), vec![
+        false, true, false,
+        false, true, false,
+        false, true, false,
+    ]);
+
+    trigger.send(()).unwrap();
+    r.recv().unwrap();
+    assert_eq!(game_wrapper.read().unwrap().lives(), vec![
         false, false, false,
         true, true, true,
         false, false, false,
