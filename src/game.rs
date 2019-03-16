@@ -38,7 +38,7 @@ impl Game {
         }
     }
 
-    pub fn step_farm(self, trigger_receiver: Receiver<()>) -> (Arc<RwLock<Game>>, Receiver<()>) {
+    pub fn step_farm(self, trigger_receiver: Receiver<()>) -> (Arc<RwLock<Game>>, Receiver<Vec<bool>>) {
         let Game { cpu_num, width, height, cpu_rows, .. } = self;
 
         let workers = cpu_num;
@@ -77,6 +77,8 @@ impl Game {
             });
         }
 
+        turn_end_sender.send(self_wrapper.read().unwrap().lives()).unwrap();
+
         let game_writer = self_wrapper.clone();
         spawn(move || {
             let mut worked = 0;
@@ -91,7 +93,7 @@ impl Game {
                 if worked >= limit {
                     worked = 0;
                     game.swap();
-                    turn_end_sender.send(()).unwrap();
+                    turn_end_sender.send(game.lives()).unwrap();
                 } else {
                     worked += 1;
                 }
@@ -207,6 +209,13 @@ fn test_step_farm() {
     let (trigger, receiver) = channel();
 
     let (game_wrapper, r) = g.step_farm(receiver);
+
+    r.recv().unwrap();
+    assert_eq!(game_wrapper.read().unwrap().lives(), vec![
+        false, false, false,
+        true, true, true,
+        false, false, false,
+    ]);
 
     trigger.send(()).unwrap();
     r.recv().unwrap();
