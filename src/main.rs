@@ -72,6 +72,8 @@ fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
     for turn in 0..turns {
         let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game_wrapper.read().unwrap().lives()) };
 
+        trigger_sender.send(()).unwrap();
+
         let mut frame = Frame::default();
         frame.delay = delay;
         frame.width = width;
@@ -79,7 +81,6 @@ fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
         frame.buffer = Cow::Borrowed(&*state);
         encoder.write_frame(&frame).unwrap();
 
-        trigger_sender.send(()).unwrap();
         result_receiver.recv().unwrap();
     }
 }

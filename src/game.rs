@@ -49,7 +49,6 @@ impl Game {
         let (result_sender, result_receiver) = channel();
         let (turn_end_sender, turn_end_receiver) = channel();
 
-
         let mut world_senders = vec![];
 
         for i in 0..workers {
@@ -82,17 +81,15 @@ impl Game {
         let game_writer = self_wrapper.clone();
         spawn(move || {
             let mut worked = 0;
+            let limit = workers - 1;
 
             while let Ok((head, rows, lives)) = result_receiver.recv() {
                 let mut game = game_writer.write().unwrap();
-                {
-                    let mut world_b = game.world_b.write().unwrap();
-                    if rows != 0 {
-                        world_b.set_lives(0, head, lives);
-                    }
+                if rows != 0 {
+                    game.world_b.write().unwrap().set_lives(0, head, lives);
                 }
 
-                if worked >= workers - 1 {
+                if worked >= limit {
                     worked = 0;
                     game.swap();
                     turn_end_sender.send(()).unwrap();
