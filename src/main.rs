@@ -57,7 +57,7 @@ fn write_usage_and_exit() {
 }
 
 fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
-    let (width, height, mut encoder) = prepare(&game, delay, output);
+    let mut encoder = prepare(&game, delay, output);
     let (trigger_sender, trigger_receiver) = channel();
     let (game_wrapper, result_receiver) = game.step_farm(trigger_receiver);
 
@@ -73,7 +73,7 @@ fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
 }
 
 fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String) {
-    let (width, height, mut encoder) = prepare(&game, delay, output);
+    let mut encoder = prepare(&game, delay, output);
 
     for _ in 0..turns {
         let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game.lives()) };
@@ -83,7 +83,7 @@ fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String) {
     }
 }
 
-fn prepare(game: &Game, delay: u16, output: &String) -> (u16, u16, Box<FnMut(Vec<u8>) -> ()>) {
+fn prepare(game: &Game, delay: u16, output: &String) -> Box<FnMut(Vec<u8>) -> ()> {
     let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
     let (width, height) = (game.width as u16, game.height as u16);
 
@@ -91,7 +91,7 @@ fn prepare(game: &Game, delay: u16, output: &String) -> (u16, u16, Box<FnMut(Vec
     let mut encoder = Encoder::new(image, width, height, color_map).unwrap();
     encoder.set(Repeat::Infinite).unwrap();
 
-    let encoder = Box::new(move |state: Vec<u8>| {
+    Box::new(move |state: Vec<u8>| {
         let mut frame = Frame::default();
         frame.delay = delay;
         frame.width = width;
@@ -99,9 +99,7 @@ fn prepare(game: &Game, delay: u16, output: &String) -> (u16, u16, Box<FnMut(Vec
         frame.buffer = Cow::Borrowed(&*state);
 
         encoder.write_frame(&frame).unwrap()
-    });
-
-    (width, height, encoder)
+    })
 }
 
 fn terminal(mut game: Game, delay: u16) {
