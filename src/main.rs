@@ -3,6 +3,11 @@ use crate::game::Game;
 use std::str::FromStr;
 use std::io::Write;
 use std::{thread, time};
+use gif::{Frame, Encoder, Repeat, SetParameter};
+use std::fs::File;
+use std::borrow::Cow;
+use std::mem;
+use std::sync::mpsc::channel;
 
 mod world;
 mod rle;
@@ -38,7 +43,7 @@ fn main() {
         if mode == "gif_pp" {
             animation_gif_p(game, delay, turns, output);
         } else {
-            animation_gif(game, delay, turns, output, mode);
+            animation_gif(game, delay, turns, output);
         }
     } else {
         terminal(game, delay);
@@ -51,64 +56,56 @@ fn write_usage_and_exit() {
     std::process::exit(1);
 }
 
-use gif::{Frame, Encoder, Repeat, SetParameter};
-use std::fs::File;
-use std::borrow::Cow;
-use std::mem;
-use std::sync::mpsc::channel;
-use std::sync::{Arc, RwLock};
-
 fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
-    let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
-    let (width, height) = (game.width as u16, game.height as u16);
-
-    let mut image = File::create(output).unwrap();
-    let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
-    encoder.set(Repeat::Infinite).unwrap();
-
+    let (width, height, mut encoder) = prepare(&game, output);
     let (trigger_sender, trigger_receiver) = channel();
     let (game_wrapper, result_receiver) = game.step_farm(trigger_receiver);
 
-    for turn in 0..turns {
-        let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game_wrapper.read().unwrap().lives()) };
+    for _ in 0..turns {
+        let state = unsafe {
+            mem::transmute::<Vec<bool>, Vec<u8>>(game_wrapper.read().unwrap().lives())
+        };
 
         trigger_sender.send(()).unwrap();
-
-        let mut frame = Frame::default();
-        frame.delay = delay;
-        frame.width = width;
-        frame.height = height;
-        frame.buffer = Cow::Borrowed(&*state);
-        encoder.write_frame(&frame).unwrap();
-
+        encoder(&frame(delay, width, height, Cow::Borrowed(&*state)));
         result_receiver.recv().unwrap();
     }
 }
 
-fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String, mode: &str) {
-    let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
-    let (width, height) = (game.width as u16, game.height as u16);
-
-    let mut image = File::create(output).unwrap();
-    let mut encoder = Encoder::new(&mut image, width, height, color_map).unwrap();
-    encoder.set(Repeat::Infinite).unwrap();
+fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String) {
+    let (width, height, mut encoder) = prepare(&game, output);
 
     for _ in 0..turns {
         let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game.lives()) };
 
-        let mut frame = Frame::default();
-        frame.delay = delay;
-        frame.width = width;
-        frame.height = height;
-        frame.buffer = Cow::Borrowed(&*state);
-        encoder.write_frame(&frame).unwrap();
-
-        if mode == "gif_p" {
-            game.step_p();
-        } else {
-            game.step();
-        }
+        encoder(&frame(delay, width, height, Cow::Borrowed(&*state)));
+        game.step();
     }
+}
+
+fn frame(delay: u16, width: u16, height: u16, buffer: Cow<[u8]>) -> Frame {
+    let mut frame = Frame::default();
+    frame.delay = delay;
+    frame.width = width;
+    frame.height = height;
+    frame.buffer = buffer;
+
+    return frame
+}
+
+fn prepare(game: &Game, output: &String) -> (u16, u16, Box<FnMut(&Frame) -> ()>) {
+    let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
+    let (width, height) = (game.width as u16, game.height as u16);
+
+    let image = File::create(output).unwrap();
+    let mut encoder = Encoder::new(image, width, height, color_map).unwrap();
+    encoder.set(Repeat::Infinite).unwrap();
+
+    let encoder = Box::new(move |frame: &Frame| {
+        encoder.write_frame(&frame).unwrap()
+    });
+
+    (width, height, encoder)
 }
 
 fn terminal(mut game: Game, delay: u16) {

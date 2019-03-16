@@ -39,11 +39,10 @@ impl Game {
     }
 
     pub fn step_farm(self, trigger_receiver: Receiver<()>) -> (Arc<RwLock<Game>>, Receiver<()>) {
-        let workers = self.cpu_num;
-        let width = self.width as usize;
-        let height = self.height as usize;
-        let cpu_rows = self.cpu_rows;
-        let cap = self.cpu_rows * width;
+        let Game { cpu_num, width, height, cpu_rows, .. } = self;
+
+        let workers = cpu_num;
+        let cap = cpu_rows * width as usize;
 
         let self_wrapper = Arc::new(RwLock::new(self));
         let (result_sender, result_receiver) = channel();
@@ -65,7 +64,7 @@ impl Game {
                     let mut lives = Vec::with_capacity(cap);
                     let mut rows = 0;
                     for y in y_range.clone() {
-                        if y >= height {
+                        if y >= height as usize {
                             break;
                         }
                         rows += 1;
@@ -109,50 +108,6 @@ impl Game {
         });
 
         (self_wrapper, turn_end_receiver)
-    }
-
-    pub fn step_p(&mut self) {
-        let mut workers = Vec::with_capacity(self.cpu_num);
-
-        for i in 0..self.cpu_num {
-            let head = i * self.cpu_rows;
-            let y_range = head..(head + self.cpu_rows);
-            let width = self.width as usize;
-            let height = self.height as usize;
-            let cap = self.cpu_rows * width;
-            let world_a = self.world_a.clone();
-
-            workers.push(spawn(move || {
-                let mut lives = Vec::with_capacity(cap);
-                let mut rows = 0;
-                let world_a = &world_a.read().unwrap();
-
-                for y in y_range {
-                    if y >= height {
-                        break;
-                    }
-                    rows += 1;
-                    for x in 0..width {
-                        lives.push(next_live(world_a, x as isize, y as isize));
-                    }
-                }
-                (head, rows, lives)
-            }));
-        }
-
-        {
-            let mut world_b = self.world_b.write().unwrap();
-            for worker in workers {
-                let (head, rows, lives) = worker.join().unwrap();
-                if rows == 0 {
-                    continue;
-                }
-
-                world_b.set_lives(0, head, lives);
-            }
-        }
-
-        self.swap();
     }
 
     pub fn step(&mut self) {
@@ -233,32 +188,6 @@ fn test_step_blinker() {
     ]);
 
     g.step();
-
-    assert_eq!(g.lives(), vec![
-        false, false, false,
-        true, true, true,
-        false, false, false,
-    ]);
-}
-
-#[test]
-fn test_step_p() {
-    let blinker = vec![
-        false, false, false,
-        true, true, true,
-        false, false, false,
-    ];
-    let mut g = Game::new(3, 3, &blinker);
-
-    g.step_p();
-
-    assert_eq!(g.lives(), vec![
-        false, true, false,
-        false, true, false,
-        false, true, false,
-    ]);
-
-    g.step_p();
 
     assert_eq!(g.lives(), vec![
         false, false, false,
