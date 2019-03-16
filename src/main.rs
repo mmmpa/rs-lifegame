@@ -57,7 +57,7 @@ fn write_usage_and_exit() {
 }
 
 fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
-    let (width, height, mut encoder) = prepare(&game, output);
+    let (width, height, mut encoder) = prepare(&game, delay, output);
     let (trigger_sender, trigger_receiver) = channel();
     let (game_wrapper, result_receiver) = game.step_farm(trigger_receiver);
 
@@ -67,33 +67,23 @@ fn animation_gif_p(game: Game, delay: u16, turns: usize, output: &String) {
         };
 
         trigger_sender.send(()).unwrap();
-        encoder(&frame(delay, width, height, Cow::Borrowed(&*state)));
+        encoder(state);
         result_receiver.recv().unwrap();
     }
 }
 
 fn animation_gif(mut game: Game, delay: u16, turns: usize, output: &String) {
-    let (width, height, mut encoder) = prepare(&game, output);
+    let (width, height, mut encoder) = prepare(&game, delay, output);
 
     for _ in 0..turns {
         let state = unsafe { mem::transmute::<Vec<bool>, Vec<u8>>(game.lives()) };
 
-        encoder(&frame(delay, width, height, Cow::Borrowed(&*state)));
+        encoder(state);
         game.step();
     }
 }
 
-fn frame(delay: u16, width: u16, height: u16, buffer: Cow<[u8]>) -> Frame {
-    let mut frame = Frame::default();
-    frame.delay = delay;
-    frame.width = width;
-    frame.height = height;
-    frame.buffer = buffer;
-
-    return frame
-}
-
-fn prepare(game: &Game, output: &String) -> (u16, u16, Box<FnMut(&Frame) -> ()>) {
+fn prepare(game: &Game, delay: u16, output: &String) -> (u16, u16, Box<FnMut(Vec<u8>) -> ()>) {
     let color_map = &[0xFF, 0xFF, 0xFF, 0, 0, 0];
     let (width, height) = (game.width as u16, game.height as u16);
 
@@ -101,7 +91,13 @@ fn prepare(game: &Game, output: &String) -> (u16, u16, Box<FnMut(&Frame) -> ()>)
     let mut encoder = Encoder::new(image, width, height, color_map).unwrap();
     encoder.set(Repeat::Infinite).unwrap();
 
-    let encoder = Box::new(move |frame: &Frame| {
+    let encoder = Box::new(move |state: Vec<u8>| {
+        let mut frame = Frame::default();
+        frame.delay = delay;
+        frame.width = width;
+        frame.height = height;
+        frame.buffer = Cow::Borrowed(&*state);
+
         encoder.write_frame(&frame).unwrap()
     });
 
