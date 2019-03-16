@@ -25,7 +25,7 @@ impl Rle {
 #[test]
 fn test_parse() {
     assert!(Rle::from_file("fixtures/sample.rl", 0).is_err());
-    Rle::from_file("fixtures/sample.rle", 0).unwrap();
+    Rle::from_file("fixtures/valid.rle", 0).unwrap();
 }
 
 fn split(raw: String) -> Result<(String, String), Box<Error>> {
