@@ -14,7 +14,11 @@ pub struct Rle {}
 impl Rle {
     pub fn from_file(filename: &str, margin: usize) -> Result<(usize, usize, Vec<bool>), Box<Error>> {
         let raw = fs::read_to_string(filename)?;
-        let (setting, data) = split(raw)?;
+        Self::from_string(&raw, margin)
+    }
+
+    pub fn from_string(body: &str, margin: usize) -> Result<(usize, usize, Vec<bool>), Box<Error>> {
+        let (setting, data) = split(body.to_string())?;
         let (w, h) = parse_setting(setting)?;
         let map = parse_map(w, h, margin, data);
 

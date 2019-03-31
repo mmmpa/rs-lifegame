@@ -6,6 +6,7 @@ use std::thread::spawn;
 use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{Receiver, channel};
 
+#[derive(Debug)]
 pub struct Game {
     pub width: isize,
     pub height: isize,
