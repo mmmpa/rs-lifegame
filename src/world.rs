@@ -2,6 +2,8 @@
 pub struct World {
     width: usize,
     height: usize,
+    w: isize,
+    h: isize,
     pub cells: Vec<bool>,
 }
 
@@ -10,19 +12,25 @@ impl World {
         let count = width * height;
         let cells = vec![false; count];
 
-        World { width, height, cells }
+        World {
+            width,
+            height,
+            w: width as isize,
+            h: height as isize,
+            cells,
+        }
     }
 
     pub fn is_live(&self, x: isize, y: isize) -> bool {
         match self.is_in(x, y) {
-            Ok((x, y)) => self.cells[self.width * y + x],
+            Ok((x, y)) => unsafe { *self.cells.get_unchecked(self.width * y + x) },
             _ => false
         }
     }
 
     pub fn set_life(&mut self, x: isize, y: isize, doa: bool) {
         match self.is_in(x, y) {
-            Ok((x, y)) => { self.cells[self.width * y + x] = doa; },
+            Ok((x, y)) => unsafe { *self.cells.get_unchecked_mut(self.width * y + x) = doa},
             _ => ()
         }
     }
@@ -37,10 +45,7 @@ impl World {
     }
 
     fn is_in(&self, x: isize, y: isize) -> Result<(usize, usize), ()> {
-        let w = self.width as isize;
-        let h = self.height as isize;
-
-        if x < 0 || w <= x || y < 0 || h <= y {
+        if x < 0 || self.w <= x || y < 0 || self.h <= y {
             return Err(())
         }
 

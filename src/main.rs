@@ -1,3 +1,6 @@
+#![feature(test)]
+extern crate test;
+
 use crate::rle::Rle;
 use crate::game::Game;
 use std::str::FromStr;
@@ -13,6 +16,7 @@ mod world;
 mod rle;
 mod game;
 mod standard_error;
+mod benchmark;
 
 /// Usage: lifegame gif      INPUT MARGIN DELAY TURNS OUTPUT
 /// Usage: lifegame terminal INPUT MARGIN DELAY
